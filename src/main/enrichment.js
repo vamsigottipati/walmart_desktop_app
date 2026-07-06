@@ -557,47 +557,82 @@ class WebsiteAgent {
     onProgress({ source: this.source, status: 'running', message: 'Finding official website...' })
 
     let siteUrl = null
-    const searchQueries = [`${name} official website`, name]
+    const badHosts = [
+      'duckduckgo.com', 'wikipedia.org', 'facebook.com', 'twitter.com', 'x.com',
+      'linkedin.com', 'amazon.', 'sellercentral', 'apps.apple.com', 'play.google.com',
+      'zoominfo.com', 'crunchbase.com', 'pitchbook.com', 'bloomberg.com', 'reuters.com',
+      'yahoo.com', 'marketwatch.com', 'sec.gov', 'techcrunch.com', 'forbes.com',
+      'glassdoor.com', ' indeed.', 'appstore', 'marketplace'
+    ]
 
-    for (const query of searchQueries) {
-      if (siteUrl) break
+    function isBadHost(host) {
+      return badHosts.some((bad) => host.includes(bad))
+    }
+
+    function websiteScore(host) {
+      const cleanHost = host.replace(/^www\./, '').toLowerCase()
+      const nameSlug = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+      const firstWord = name.toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g, '')
+      let score = 0
+      if (cleanHost.includes(nameSlug)) score += 100
+      if (cleanHost.includes(firstWord)) score += 50
+      if (/\.(com|co\.uk|co)$/.test(cleanHost)) score += 10
+      if (/^www\./.test(host)) score += 5
+      return score
+    }
+
+    // 1. Try direct domain guesses first (fast and avoids search noise)
+    const directCandidates = []
+    const slug = name.toLowerCase().replace(/[^a-z0-9]/g, '')
+    const firstWordSlug = name.toLowerCase().split(/\s+/)[0].replace(/[^a-z0-9]/g, '')
+    if (slug) {
+      directCandidates.push(`https://www.${slug}.com`, `https://${slug}.com`)
+    }
+    if (firstWordSlug && firstWordSlug !== slug) {
+      directCandidates.push(`https://www.${firstWordSlug}.com`, `https://${firstWordSlug}.com`)
+    }
+
+    for (const candidate of [...new Set(directCandidates)]) {
       try {
-        const searchResponse = await fetchWithTimeout(
-          `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-          { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }
-        )
-        const searchHtml = await searchResponse.text()
-        const $search = cheerio.load(searchHtml)
-
-        $search('a.result__a, a.result__snippet').each((_i, el) => {
-          if (siteUrl) return false
-          const decoded = decodeDdgRedirect($search(el).attr('href'))
-          if (!decoded) return
-          const host = new URL(decoded).hostname.toLowerCase()
-          if (host.includes('duckduckgo.com') || host.includes('wikipedia.org') || host.includes('facebook.com') || host.includes('twitter.com') || host.includes('linkedin.com')) return
-          siteUrl = normalizeWebsite(decoded)
-        })
-      } catch (err) {
-        console.warn(`WebsiteAgent search error for "${query}":`, err.message)
+        const resp = await fetchWithTimeout(candidate, { method: 'HEAD' }, 6_000)
+        if (resp.ok) {
+          siteUrl = normalizeWebsite(candidate)
+          break
+        }
+      } catch {
+        // ignore
       }
     }
 
-    // Fallback: try common domain patterns for simple names
-    if (!siteUrl && /^[a-z0-9\s]+$/i.test(name) && name.split(/\s+/).length <= 3) {
-      const candidates = [
-        `https://www.${name.toLowerCase().replace(/\s+/g, '')}.com`,
-        `https://www.${name.toLowerCase().replace(/\s+/g, '-')}.com`
-      ]
-      for (const candidate of candidates) {
+    // 2. Search DuckDuckGo and pick the best matching result
+    if (!siteUrl) {
+      const searchQueries = [`${name} official website`, name]
+      const candidates = []
+
+      for (const query of searchQueries) {
         try {
-          const resp = await fetchWithTimeout(candidate, { method: 'HEAD' }, 6_000)
-          if (resp.ok) {
-            siteUrl = candidate
-            break
-          }
-        } catch {
-          // ignore
+          const searchResponse = await fetchWithTimeout(
+            `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+            { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }
+          )
+          const searchHtml = await searchResponse.text()
+          const $search = cheerio.load(searchHtml)
+
+          $search('a.result__a').each((_i, el) => {
+            const decoded = decodeDdgRedirect($search(el).attr('href'))
+            if (!decoded) return
+            const host = new URL(decoded).hostname.toLowerCase()
+            if (isBadHost(host)) return
+            candidates.push({ url: normalizeWebsite(decoded), host, score: websiteScore(host) })
+          })
+        } catch (err) {
+          console.warn(`WebsiteAgent search error for "${query}":`, err.message)
         }
+      }
+
+      if (candidates.length) {
+        candidates.sort((a, b) => b.score - a.score)
+        siteUrl = candidates[0].url
       }
     }
 
@@ -1140,7 +1175,7 @@ async function enrichStakeholders(stakeholders, emails, domain, companyName) {
   // This is best-effort; failures fall back to the search URL.
   const top = enriched.slice(0, 3)
   const resolved = await Promise.all(
-    top.map((person) => resolveLinkedInProfile(person.name, companyName).catch(() => person.linkedIn))
+    top.map((person) => resolveLinkedInProfile(person.name, linkedInCompany).catch(() => person.linkedIn))
   )
   top.forEach((person, idx) => {
     person.linkedIn = resolved[idx] || person.linkedIn
