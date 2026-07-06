@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:;">
+  <title>Walmart Company Enrichment</title>
+  <link rel="stylesheet" href="../dist/styles.css">
+</head>
+<body class="h-screen w-screen overflow-hidden bg-enterprise-50 text-enterprise-900 antialiased selection:bg-accent-100 selection:text-accent-900">
+  <div id="app" class="flex h-full flex-col">
+    <!-- Header -->
+    <header class="glass-header flex flex-col gap-4 px-6 py-4 md:flex-row md:items-center md:justify-between">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-md bg-enterprise-900 text-lg font-semibold text-white shadow-soft">
+          W
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold leading-tight text-enterprise-900">Company Enrichment</h1>
+          <p class="text-xs text-enterprise-500">For Walmart • Agentic web enrichment</p>
+        </div>
+      </div>
+
+      <form id="add-form" class="flex w-full items-center gap-2 md:w-auto">
+        <input
+          id="company-input"
+          type="text"
+          placeholder="Enter company name..."
+          required
+          autocomplete="off"
+          class="glass-input w-full md:w-72"
+        >
+        <button type="submit" class="glass-btn flex items-center gap-2 whitespace-nowrap">
+          <i data-icon="plus" data-icon-size="16"></i>
+          <span>Enhance</span>
+        </button>
+      </form>
+    </header>
+
+    <!-- Main layout -->
+    <main class="flex flex-1 overflow-hidden">
+      <!-- Sidebar navigation -->
+      <nav class="w-60 flex-shrink-0 border-r border-enterprise-200 bg-white">
+        <div class="p-4">
+          <ul class="space-y-1">
+            <li>
+              <button data-page="dashboard" class="nav-item w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-enterprise-700 transition hover:bg-enterprise-50">
+                <i data-icon="layout-dashboard" data-icon-size="18"></i>
+                <span>Dashboard</span>
+              </button>
+            </li>
+            <li>
+              <button data-page="upload" class="nav-item w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-enterprise-700 transition hover:bg-enterprise-50">
+                <i data-icon="upload-cloud" data-icon-size="18"></i>
+                <span>Upload Data</span>
+              </button>
+            </li>
+            <li>
+              <button data-page="profile" class="nav-item w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-enterprise-700 transition hover:bg-enterprise-50">
+                <i data-icon="user" data-icon-size="18"></i>
+                <span>Profile</span>
+              </button>
+            </li>
+            <li>
+              <button data-page="settings" class="nav-item w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-enterprise-700 transition hover:bg-enterprise-50">
+                <i data-icon="settings" data-icon-size="18"></i>
+                <span>Settings</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+
+        <div class="mt-auto border-t border-enterprise-200 p-4">
+          <div class="rounded-lg border border-enterprise-200 bg-enterprise-50 p-3">
+            <p class="text-xs font-medium text-enterprise-700">OpenRouter</p>
+            <p id="nav-key-status" class="mt-1 text-xs text-enterprise-500">No key saved</p>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Page container -->
+      <section id="page-container" class="flex-1 overflow-hidden bg-enterprise-50">
+
+        <!-- Dashboard page -->
+        <div id="dashboard-page" class="page flex h-full flex-col">
+          <!-- API key banner -->
+          <div id="api-key-banner" class="hidden px-6 pt-4">
+            <div class="flex items-center gap-3 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <i data-icon="alert-triangle" data-icon-size="20"></i>
+              <span>OpenRouter API key not configured. Results use local heuristics. Add key in Settings.</span>
+            </div>
+          </div>
+
+          <!-- Search -->
+          <div class="px-6 py-4">
+            <div class="relative">
+              <i data-icon="search" data-icon-size="16" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-enterprise-400"></i>
+              <input
+                id="search-input"
+                type="text"
+                placeholder="Search enriched companies..."
+                autocomplete="off"
+                class="glass-input w-full pl-10"
+              >
+            </div>
+          </div>
+
+          <!-- Content area -->
+          <div id="content-area" class="flex-1 overflow-y-auto px-6 pb-6">
+            <!-- Loading state -->
+            <div id="loading-state" class="hidden flex h-80 flex-col items-center justify-center text-enterprise-500">
+              <div class="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-enterprise-200 border-t-enterprise-600"></div>
+              <p id="loading-message" class="text-sm font-medium">Initializing enrichment...</p>
+              <div id="loading-steps" class="mt-4 flex max-w-md flex-col gap-2 px-6 text-sm"></div>
+            </div>
+
+            <!-- Empty state -->
+            <div id="empty-state" class="hidden flex h-64 flex-col items-center justify-center text-center text-enterprise-500">
+              <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-lg border border-enterprise-200 bg-white shadow-soft">
+                <i data-icon="inbox" data-icon-size="32" class="text-enterprise-300"></i>
+              </div>
+              <p class="text-base font-medium">No enriched companies yet</p>
+              <p class="mt-1 max-w-xs text-sm">Type a company name above and hit Enhance to generate company details.</p>
+            </div>
+
+            <!-- Results grid -->
+            <div id="results-grid" class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
+          </div>
+        </div>
+
+        <!-- Upload Data page -->
+        <div id="upload-page" class="page hidden h-full flex-col overflow-y-auto p-6">
+          <div class="mx-auto w-full max-w-5xl space-y-6">
+            <!-- Resume banner -->
+            <div id="upload-resume-banner" class="glass-card hidden cursor-default border-l-4 border-l-accent-500 p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex items-start gap-3">
+                  <i data-icon="rotate-ccw" data-icon-size="20" class="mt-0.5 text-accent-600"></i>
+                  <div>
+                    <h3 class="font-semibold text-enterprise-900">Resume previous upload?</h3>
+                    <p id="upload-resume-text" class="mt-1 text-sm text-enterprise-600"></p>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button id="upload-resume-btn" class="glass-btn">Resume</button>
+                  <button id="upload-discard-btn" class="glass-btn-secondary">Discard</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="glass-card cursor-default p-6">
+              <h2 class="text-xl font-semibold text-enterprise-900">Bulk Enrichment</h2>
+              <p class="mt-1 text-sm text-enterprise-500">Drag and drop an Excel file, or click to browse. We'll enrich each company row and let you download the results.</p>
+
+              <!-- Drop zone -->
+              <div id="upload-dropzone" class="upload-dropzone mt-6">
+                <div class="flex flex-col items-center gap-3 text-center">
+                  <div class="flex h-14 w-14 items-center justify-center rounded-full bg-enterprise-100 text-enterprise-600">
+                    <i data-icon="upload-cloud" data-icon-size="28"></i>
+                  </div>
+                  <div>
+                    <p class="text-sm font-medium text-enterprise-900">Drop your Excel file here</p>
+                    <p class="text-xs text-enterprise-500">.xlsx, .xls, or .csv up to any reasonable size</p>
+                  </div>
+                  <button id="upload-browse-btn" class="glass-btn-secondary text-sm">Browse files</button>
+                </div>
+              </div>
+
+              <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end">
+                <div class="flex-1">
+                  <label for="upload-file-name" class="mb-1 block text-sm font-medium text-enterprise-700">Selected file</label>
+                  <p id="upload-file-name" class="flex min-h-[2.5rem] items-center gap-2 rounded-md border border-enterprise-200 bg-white px-3 py-2 text-sm text-enterprise-700">
+                    <i data-icon="file-spreadsheet" data-icon-size="16" class="text-enterprise-400"></i>
+                    <span>No file selected</span>
+                  </p>
+                </div>
+                <div>
+                  <label for="upload-column-input" class="mb-1 block text-sm font-medium text-enterprise-700">Company column</label>
+                  <input
+                    id="upload-column-input"
+                    type="text"
+                    placeholder="Auto-detect"
+                    class="glass-input w-48"
+                  >
+                </div>
+                <button id="upload-parse-btn" class="glass-btn flex items-center gap-2 whitespace-nowrap">
+                  <i data-icon="search" data-icon-size="16"></i>
+                  <span>Preview Rows</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="upload-preview-card" class="glass-card hidden cursor-default p-6">
+              <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-enterprise-500">Preview</h3>
+                <button id="upload-enrich-btn" class="glass-btn flex items-center gap-2">
+                  <i data-icon="play" data-icon-size="16"></i>
+                  <span>Enrich All</span>
+                </button>
+              </div>
+              <div class="overflow-x-auto rounded-md border border-enterprise-200">
+                <table class="w-full text-left text-sm">
+                  <thead class="bg-enterprise-100 text-enterprise-700">
+                    <tr id="upload-preview-head"></tr>
+                  </thead>
+                  <tbody id="upload-preview-body" class="divide-y divide-enterprise-100 bg-white"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div id="upload-progress-card" class="glass-card hidden cursor-default p-6">
+              <h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-enterprise-500">Progress</h3>
+              <div id="upload-progress-list" class="space-y-2"></div>
+            </div>
+
+            <div id="upload-results-card" class="glass-card hidden cursor-default p-6">
+              <div class="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <h3 class="text-sm font-semibold uppercase tracking-wider text-enterprise-500">Results</h3>
+                <div class="flex flex-wrap items-center gap-2">
+                  <div class="relative">
+                    <button id="upload-columns-toggle" class="glass-btn-secondary flex items-center gap-2 text-sm">
+                      <i data-icon="sliders-horizontal" data-icon-size="16"></i>
+                      <span>Columns</span>
+                    </button>
+                    <div id="upload-columns-menu" class="hidden absolute right-0 z-10 mt-2 w-56 rounded-lg border border-enterprise-200 bg-white p-3 shadow-card">
+                      <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-enterprise-500">Export columns</p>
+                      <div id="upload-columns-list" class="max-h-64 space-y-2 overflow-y-auto"></div>
+                    </div>
+                  </div>
+                  <button id="upload-export-btn" class="glass-btn-secondary flex items-center gap-2 text-sm">
+                    <i data-icon="download" data-icon-size="16"></i>
+                    <span>Download Excel</span>
+                  </button>
+                </div>
+              </div>
+              <div class="overflow-x-auto rounded-md border border-enterprise-200">
+                <table class="w-full text-left text-sm">
+                  <thead class="bg-enterprise-100 text-enterprise-700">
+                    <tr id="upload-results-head"></tr>
+                  </thead>
+                  <tbody id="upload-results-body" class="divide-y divide-enterprise-100 bg-white"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Profile page -->
+        <div id="profile-page" class="page hidden h-full flex-col overflow-y-auto p-6">
+          <div class="mx-auto w-full max-w-2xl space-y-6">
+            <div class="glass-card cursor-default p-6">
+              <div class="mb-1 flex items-center gap-3">
+                <i data-icon="user" data-icon-size="24" class="text-enterprise-600"></i>
+                <h2 class="text-xl font-semibold text-enterprise-900">Profile</h2>
+              </div>
+              <p class="text-sm text-enterprise-500">Your app profile and default export preferences.</p>
+
+              <div class="mt-6 space-y-5">
+                <div>
+                  <label for="profile-name-input" class="mb-1 block text-sm font-medium text-enterprise-700">Name</label>
+                  <input id="profile-name-input" type="text" class="glass-input w-full" placeholder="Jane Doe">
+                </div>
+                <div>
+                  <label for="profile-team-input" class="mb-1 block text-sm font-medium text-enterprise-700">Team / Role</label>
+                  <input id="profile-team-input" type="text" class="glass-input w-full" placeholder="Sourcing Analyst">
+                </div>
+                <div>
+                  <label for="profile-column-input" class="mb-1 block text-sm font-medium text-enterprise-700">Default company column header</label>
+                  <input id="profile-column-input" type="text" class="glass-input w-full" placeholder="Company">
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-medium text-enterprise-700">Default export columns</label>
+                  <div id="profile-columns-list" class="grid grid-cols-2 gap-2 sm:grid-cols-3"></div>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button id="save-profile-btn" class="glass-btn flex items-center gap-2">
+                    <i data-icon="save" data-icon-size="16"></i>
+                    <span>Save Profile</span>
+                  </button>
+                  <p id="profile-message" class="min-h-[1.25rem] text-sm font-medium"></p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings page -->
+        <div id="settings-page" class="page hidden h-full flex-col overflow-y-auto p-6">
+          <div class="mx-auto w-full max-w-2xl space-y-6">
+            <div class="glass-card cursor-default p-6">
+              <div class="mb-1 flex items-center gap-3">
+                <i data-icon="settings" data-icon-size="24" class="text-enterprise-600"></i>
+                <h2 class="text-xl font-semibold text-enterprise-900">Settings</h2>
+              </div>
+              <p class="mt-1 text-sm text-enterprise-500">Configure your OpenRouter integration.</p>
+
+              <div class="mt-6 space-y-5">
+                <div>
+                  <label for="api-key-input" class="mb-1 block text-sm font-medium text-enterprise-700">OpenRouter API Key</label>
+                  <input
+                    id="api-key-input"
+                    type="password"
+                    placeholder="sk-or-..."
+                    autocomplete="off"
+                    class="glass-input w-full"
+                  >
+                  <p id="key-status" class="mt-1.5 text-xs text-enterprise-500">No key saved.</p>
+                </div>
+
+                <div>
+                  <label for="model-input" class="mb-1 block text-sm font-medium text-enterprise-700">Model</label>
+                  <input
+                    id="model-input"
+                    type="text"
+                    value="deepseek/deepseek-v4-flash"
+                    readonly
+                    class="glass-input w-full cursor-not-allowed bg-enterprise-100"
+                  >
+                  <p class="mt-1 text-xs text-enterprise-400">Model selection is locked to DeepSeek V4 Flash.</p>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3">
+                  <button id="save-settings-btn" class="glass-btn flex items-center gap-2">
+                    <i data-icon="save" data-icon-size="16"></i>
+                    <span>Save Settings</span>
+                  </button>
+                  <button id="test-connection-btn" class="glass-btn-secondary flex items-center gap-2">
+                    <i data-icon="check" data-icon-size="16"></i>
+                    <span>Test Connection</span>
+                  </button>
+                </div>
+
+                <p id="settings-message" class="min-h-[1.25rem] text-sm font-medium"></p>
+              </div>
+            </div>
+
+            <div class="glass-card cursor-default p-6">
+              <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-enterprise-500">About OpenRouter</h3>
+              <p class="text-sm leading-relaxed text-enterprise-600">
+                Your API key is stored only in the app's local settings file in your user data directory and is never sent to the renderer or written to browser storage.
+                When a key is present, enrichment uses
+                <span class="font-medium text-enterprise-900">deepseek/deepseek-v4-flash</span>
+                to synthesize the final profile. If the key is missing or the call fails, the app falls back to local heuristic aggregation.
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+  </div>
+
+  <!-- Company detail modal -->
+  <div id="company-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-enterprise-900/50 p-4 backdrop-blur-sm" aria-modal="true" role="dialog">
+    <div class="modal-panel max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-enterprise-200 bg-white shadow-2xl">
+      <div id="modal-content" class="p-6"></div>
+    </div>
+  </div>
+
+  <script src="store.js" defer></script>
+  <script src="icons.js" defer></script>
+  <script src="renderer.js" defer></script>
+</body>
+</html>
