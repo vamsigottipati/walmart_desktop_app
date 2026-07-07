@@ -481,7 +481,16 @@ function renderGrid() {
             <p class="text-xs text-enterprise-500 mt-0.5">${escapeHtml(company.industry || 'Unknown industry')}</p>
           </div>
         </div>
-        ${Lucide.icon('chevron-right', 20, 'text-enterprise-300 opacity-0 group-hover:opacity-100 transition')}
+        <div class="flex items-center gap-1">
+          <button
+            class="card-delete-btn rounded-md p-1.5 text-enterprise-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 focus:opacity-100"
+            aria-label="Delete ${escapeHtml(company.name)}"
+            title="Delete"
+          >
+            ${Lucide.icon('trash-2', 16)}
+          </button>
+          ${Lucide.icon('chevron-right', 20, 'text-enterprise-300 opacity-0 group-hover:opacity-100 transition')}
+        </div>
       </div>
       <p class="mt-4 text-sm text-enterprise-600 line-clamp-2">${escapeHtml(company.description || '')}</p>
       <div class="mt-4 flex items-center justify-between text-xs text-enterprise-500">
@@ -495,6 +504,11 @@ function renderGrid() {
         </span>
       </div>
     `
+
+    card.querySelector('.card-delete-btn').addEventListener('click', (event) => {
+      event.stopPropagation()
+      deleteCompany(company.id)
+    })
 
     card.addEventListener('click', () => openModal(company))
     card.addEventListener('keydown', (event) => {
