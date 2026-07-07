@@ -867,6 +867,82 @@ function renderRevenue(revenue) {
   return amount + year + source
 }
 
+function isNonEmpty(value) {
+  if (value === null || value === undefined) return false
+  if (typeof value === 'string' && value.trim() === '') return false
+  if (Array.isArray(value) && value.length === 0) return false
+  if (typeof value === 'object' && Object.keys(value).length === 0) return false
+  return true
+}
+
+function mergeStakeholders(existing = [], incoming = []) {
+  const map = new Map()
+  for (const s of existing) {
+    if (s && s.name) map.set(s.name.toLowerCase().trim(), { ...s })
+  }
+  for (const s of incoming) {
+    if (!s || !s.name) continue
+    const key = s.name.toLowerCase().trim()
+    const current = map.get(key) || {}
+    map.set(key, { ...current, ...s })
+  }
+  return Array.from(map.values())
+}
+
+function mergeAgentContext(existing = {}, incoming = {}) {
+  const merged = {}
+  const allKeys = new Set([...Object.keys(existing), ...Object.keys(incoming)])
+  for (const key of allKeys) {
+    const oldVal = existing[key]
+    const newVal = incoming[key]
+    if (isNonEmpty(newVal)) {
+      merged[key] = newVal
+    } else {
+      merged[key] = oldVal
+    }
+  }
+  return merged
+}
+
+function mergeCompanyProfile(existing, incoming) {
+  const merged = { ...existing }
+
+  for (const key of Object.keys(incoming)) {
+    const newVal = incoming[key]
+
+    if (key === 'stakeholders') {
+      merged[key] = mergeStakeholders(existing.stakeholders, newVal)
+      continue
+    }
+
+    if (key === 'agentContext') {
+      merged[key] = mergeAgentContext(existing.agentContext, newVal)
+      continue
+    }
+
+    if (key === 'sources') {
+      const oldSources = Array.isArray(existing.sources) ? existing.sources : []
+      const newSources = Array.isArray(newVal) ? newVal : []
+      const seen = new Set(oldSources.map((s) => s?.url).filter(Boolean))
+      merged[key] = [...oldSources]
+      for (const s of newSources) {
+        if (s && s.url && !seen.has(s.url)) {
+          merged[key].push(s)
+          seen.add(s.url)
+        }
+      }
+      continue
+    }
+
+    if (isNonEmpty(newVal)) {
+      merged[key] = newVal
+    }
+  }
+
+  merged.enrichedAt = new Date().toISOString()
+  return merged
+}
+
 async function refetchCompany(id) {
   const company = companies.find((c) => c.id === id)
   if (!company) return
@@ -881,7 +957,9 @@ async function refetchCompany(id) {
     const response = await window.electronAPI.enrichCompany(company.name)
     if (!response.success) throw new Error(response.error || 'Re-fetch failed')
 
-    const refreshed = { ...response.profile, id: company.id }
+    const refreshed = mergeCompanyProfile(company, response.profile)
+    refreshed.id = company.id
+
     const index = companies.findIndex((c) => c.id === id)
     if (index !== -1) companies[index] = refreshed
 
