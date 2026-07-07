@@ -471,4 +471,114 @@ async function performAgenticSearch(query, apiKey, onProgress = () => {}) {
   return state
 }
 
-module.exports = { performAgenticSearch }
+async function deepResearchCompany(name, apiKey, onProgress = () => {}) {
+  const query = `${name} company headquarters employee count year founded latest annual revenue net income total funding key executives leadership team official website`
+
+  onProgress({ type: 'research', message: `Starting deep research for ${name}...` })
+  const state = await performAgenticSearch(query, apiKey, onProgress)
+
+  const context = buildSourceContext(state.sources)
+  const extractionPrompt = `You are a company-profile extraction assistant. Using ONLY the web sources below, extract structured information about "${name}".
+
+Return ONLY a valid JSON object with this exact shape. Use null or empty arrays for unknown fields. Do not invent facts not supported by the sources.
+
+{
+  "headquarters": "City, State/Region, Country",
+  "employeeCount": 12345,
+  "foundedYear": 1999,
+  "revenue": {"amount": "$12.3 billion", "year": 2024, "source": "source name or URL"},
+  "netIncome": {"amount": "$1.2 billion", "year": 2024, "source": "source name or URL"},
+  "funding": {"amount": "$100 million", "source": "source name or URL"},
+  "website": "https://www.example.com",
+  "industry": "industry name",
+  "keyStakeholders": [
+    {"name": "Full Name", "role": "CEO", "email": "optional", "linkedIn": "optional"}
+  ],
+  "summary": "One-paragraph company summary from the sources.",
+  "sources": [
+    {"number": 1, "title": "source title", "url": "source url"}
+  ]
+}
+
+Rules:
+- headquarters should be a single string like "Cupertino, California, US".
+- employeeCount should be an integer number only (no commas or words).
+- revenue/netIncome/funding: include the amount string, year if known, and source.
+- keyStakeholders: include only named people explicitly mentioned as executives/leaders.
+- sources: cite up to 8 of the most useful sources.
+
+Sources:
+${context}`
+
+  onProgress({ type: 'extract', message: 'Extracting structured profile...' })
+
+  let profile = {
+    deepResearch: {
+      query: state.query,
+      answer: state.answer,
+      sources: state.citations || []
+    }
+  }
+
+  if (apiKey) {
+    try {
+      const data = await callOpenRouter(apiKey, [{ role: 'user', content: extractionPrompt }], 1500)
+      const parsed = extractJson(data.choices?.[0]?.message?.content || '')
+      if (parsed && typeof parsed === 'object') {
+        profile = {
+          headquarters: parsed.headquarters || null,
+          employeeCount: typeof parsed.employeeCount === 'number' ? parsed.employeeCount : null,
+          foundedYear: typeof parsed.foundedYear === 'number' ? parsed.foundedYear : null,
+          revenue: parsed.revenue || null,
+          netIncome: parsed.netIncome || null,
+          funding: parsed.funding || null,
+          website: parsed.website || null,
+          industry: parsed.industry || null,
+          keyStakeholders: Array.isArray(parsed.keyStakeholders) ? parsed.keyStakeholders : [],
+          summary: parsed.summary || null,
+          deepResearch: {
+            query: state.query,
+            answer: state.answer,
+            sources: parsed.sources || state.citations || []
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Deep research extraction error:', err.message)
+    }
+  }
+
+  // Normalize revenue/funding to strings for compatibility with existing UI where needed.
+  if (profile.revenue && typeof profile.revenue === 'object' && profile.revenue.amount) {
+    profile.revenueString = `${profile.revenue.amount}${profile.revenue.year ? ` (${profile.revenue.year})` : ''}`
+  }
+  if (profile.netIncome && typeof profile.netIncome === 'object' && profile.netIncome.amount) {
+    profile.netIncomeString = `${profile.netIncome.amount}${profile.netIncome.year ? ` (${profile.netIncome.year})` : ''}`
+  }
+  if (profile.funding && typeof profile.funding === 'object' && profile.funding.amount) {
+    profile.fundingString = profile.funding.amount
+  }
+
+  onProgress({ type: 'done', message: 'Deep research complete' })
+  return {
+    ...state,
+    profile: {
+      ...profile,
+      _agentDetails: {
+        deepResearch: {
+          source: 'DeepResearch',
+          found: true,
+          data: {
+            query: state.query,
+            iterations: state.iterations,
+            sourcesCount: state.sources.length,
+            answer: state.answer,
+            citations: state.citations
+          }
+        }
+      }
+    }
+  }
+}
+
+module.exports = { performAgenticSearch, deepResearchCompany }

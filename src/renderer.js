@@ -127,12 +127,6 @@ function cacheElements() {
   elements.profileColumnsList = document.getElementById('profile-columns-list')
   elements.saveProfileBtn = document.getElementById('save-profile-btn')
   elements.profileMessage = document.getElementById('profile-message')
-
-  // Agentic Search
-  elements.agenticForm = document.getElementById('agentic-form')
-  elements.agenticInput = document.getElementById('agentic-input')
-  elements.agenticChat = document.getElementById('agentic-chat')
-  elements.agenticWelcome = document.getElementById('agentic-welcome')
 }
 
 function bindEvents() {
@@ -191,16 +185,6 @@ function bindEvents() {
 
   // Profile
   elements.saveProfileBtn.addEventListener('click', handleSaveProfile)
-
-  // Agentic Search
-  elements.agenticForm.addEventListener('submit', handleAgenticSearch)
-  elements.agenticInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault()
-      elements.agenticForm.requestSubmit()
-    }
-  })
-  elements.agenticInput.addEventListener('input', autoResizeAgenticInput)
 }
 
 function preventDefaults(event) {
@@ -211,13 +195,6 @@ function preventDefaults(event) {
 function registerProgressListener() {
   if (!window.electronAPI || !window.electronAPI.onEnrichProgress) return
   window.electronAPI.onEnrichProgress((progress) => updateLoadingProgress(progress))
-  window.electronAPI.onAgenticSearchProgress((progress) => updateAgenticProgress(progress))
-}
-
-function autoResizeAgenticInput() {
-  const el = elements.agenticInput
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, 128)}px`
 }
 
 function navigateTo(page) {
@@ -543,6 +520,7 @@ function openModal(company) {
   document.getElementById('modal-close').addEventListener('click', closeModal)
   document.getElementById('modal-delete').addEventListener('click', () => deleteCompany(company.id))
   document.getElementById('modal-refetch').addEventListener('click', () => refetchCompany(company.id))
+  document.getElementById('modal-deep-research').addEventListener('click', () => deepResearchCompany(company.id))
 
   const showSourcesBtn = document.getElementById('modal-show-sources')
   if (showSourcesBtn) {
@@ -674,10 +652,14 @@ function renderModalContent(company) {
         </div>
       </section>
 
-      <div class="grid grid-cols-2 gap-3 pt-2">
+      <div class="grid grid-cols-3 gap-3 pt-2">
         <button id="modal-refetch" class="glass-btn-secondary flex items-center justify-center gap-2">
           ${Lucide.icon('rotate-ccw', 16)}
           <span>Re-fetch</span>
+        </button>
+        <button id="modal-deep-research" class="glass-btn-secondary flex items-center justify-center gap-2">
+          ${Lucide.icon('search', 16)}
+          <span>Deep research</span>
         </button>
         <button id="modal-delete" class="glass-btn-danger flex items-center justify-center gap-2">
           ${Lucide.icon('trash-2', 16)}
@@ -708,7 +690,8 @@ function renderAgentDetails(agentDetails = {}) {
     { key: 'Website', label: 'Website', icon: 'external-link' },
     { key: 'EDGAR', label: 'SEC EDGAR', icon: 'briefcase' },
     { key: 'Finance', label: 'Finance lookup', icon: 'banknote' },
-    { key: 'DuckDuckGo', label: 'DuckDuckGo', icon: 'search' }
+    { key: 'DuckDuckGo', label: 'DuckDuckGo', icon: 'search' },
+    { key: 'deepResearch', label: 'Deep Research', icon: 'search' }
   ]
 
   return agents.map((agent) => {
@@ -788,6 +771,13 @@ function summarizeAgentData(source, data) {
   if (source === 'DuckDuckGo') {
     if (Array.isArray(data.results) && data.results.length) {
       return `<ul class="space-y-1 text-xs text-enterprise-700">${data.results.slice(0, 5).map((r) => `<li><span class="font-medium">${escapeHtml(r.title || '')}</span> — ${escapeHtml(r.snippet || '')}</li>`).join('')}</ul>`
+    }
+  }
+
+  if (source === 'deepResearch') {
+    if (data.answer) rows.push(['Answer', escapeHtml(data.answer)])
+    if (Array.isArray(data.citations) && data.citations.length) {
+      rows.push(['Sources', data.citations.slice(0, 5).map((c) => `<a href="${escapeHtml(c.url)}" target="_blank" rel="noopener" class="text-accent-600 hover:underline">[${c.number}] ${escapeHtml(c.title || c.url)}</a>`).join('<br>')])
     }
   }
 
@@ -917,6 +907,13 @@ function mergeCompanyProfile(existing, incoming) {
 
     if (key === 'agentContext') {
       merged[key] = mergeAgentContext(existing.agentContext, newVal)
+      continue
+    }
+
+    if (key === '_agentDetails') {
+      const oldDetails = existing._agentDetails || {}
+      const newDetails = newVal || {}
+      merged[key] = { ...oldDetails, ...newDetails }
       continue
     }
 
@@ -1291,179 +1288,50 @@ async function handleExportUpload() {
 }
 
 // ---------------------------------------------------------------------------
-// Agentic Search
+// Deep Research (agentic search per company)
 // ---------------------------------------------------------------------------
 
-let agenticSearchActive = false
+let deepResearchActive = false
 
-async function handleAgenticSearch(event) {
-  event.preventDefault()
-  const query = elements.agenticInput.value.trim()
-  if (!query || agenticSearchActive) return
+async function deepResearchCompany(id) {
+  const company = companies.find((c) => c.id === id)
+  if (!company) return
 
-  agenticSearchActive = true
-  elements.agenticInput.value = ''
-  autoResizeAgenticInput()
-
-  if (elements.agenticWelcome) {
-    elements.agenticWelcome.remove()
-    elements.agenticWelcome = null
+  if (!window.electronAPI || !window.electronAPI.deepResearchCompany) {
+    alert('Deep research is not available.')
+    return
   }
 
-  appendAgenticMessage('user', query)
-
-  const thinkingId = `agentic-thinking-${Date.now()}`
-  appendAgenticThinking(thinkingId)
+  const deepBtn = document.getElementById('modal-deep-research')
+  if (deepBtn) {
+    deepResearchActive = true
+    deepBtn.disabled = true
+    deepBtn.innerHTML = `${Lucide.icon('loader', 16, 'animate-spin')} <span>Deep research...</span>`
+  }
 
   try {
-    const response = await window.electronAPI.agenticSearch(query)
-    removeAgenticThinking(thinkingId)
+    const response = await window.electronAPI.deepResearchCompany(company.name)
+    if (!response.success) throw new Error(response.error || 'Deep research failed')
 
-    if (!response.success) throw new Error(response.error || 'Search failed')
+    const updated = mergeCompanyProfile(company, response.profile)
+    updated.id = company.id
 
-    appendAgenticAnswer(response.result)
+    const index = companies.findIndex((c) => c.id === id)
+    if (index !== -1) companies[index] = updated
+
+    await CompanyStore.saveCompanies(companies)
+    renderGrid()
+    openModal(updated)
   } catch (err) {
-    removeAgenticThinking(thinkingId)
-    appendAgenticMessage('system', `Error: ${err.message}`)
+    alert('Deep research failed: ' + err.message)
   } finally {
-    agenticSearchActive = false
-    elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
-  }
-}
-
-function appendAgenticMessage(role, text) {
-  const wrapper = document.createElement('div')
-  wrapper.className = `mb-4 flex ${role === 'user' ? 'justify-end' : 'justify-start'}`
-
-  const bubble = document.createElement('div')
-  bubble.className = `max-w-[80%] rounded-xl px-4 py-3 text-sm ${
-    role === 'user'
-      ? 'bg-enterprise-900 text-white'
-      : 'border border-enterprise-200 bg-white text-enterprise-800 shadow-soft'
-  }`
-  bubble.innerHTML = role === 'user' ? escapeHtml(text) : renderAgenticAnswerText(text)
-
-  wrapper.appendChild(bubble)
-  elements.agenticChat.appendChild(wrapper)
-  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
-}
-
-function appendAgenticThinking(id) {
-  const wrapper = document.createElement('div')
-  wrapper.id = id
-  wrapper.className = 'mb-4 flex justify-start'
-  wrapper.innerHTML = `
-    <div class="max-w-[90%] rounded-xl border border-enterprise-200 bg-white px-4 py-3 text-sm text-enterprise-600 shadow-soft">
-      <div class="flex items-center gap-2 font-medium text-enterprise-700">
-        ${Lucide.icon('search', 14)}
-        <span>Researching...</span>
-      </div>
-      <div id="${id}-steps" class="mt-2 space-y-1 text-xs text-enterprise-500"></div>
-    </div>
-  `
-  elements.agenticChat.appendChild(wrapper)
-  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
-}
-
-function removeAgenticThinking(id) {
-  const el = document.getElementById(id)
-  if (el) el.remove()
-}
-
-function updateAgenticProgress(progress) {
-  const thinkingEls = elements.agenticChat.querySelectorAll('[id^="agentic-thinking-"]')
-  const latest = thinkingEls[thinkingEls.length - 1]
-  if (!latest) return
-
-  const steps = latest.querySelector('[id$="-steps"]')
-  if (!steps) return
-
-  const step = document.createElement('div')
-  step.className = 'flex items-center gap-1.5'
-  step.innerHTML = `${Lucide.icon('loader', 10, 'animate-spin')} ${escapeHtml(progress.message || '')}`
-  steps.appendChild(step)
-  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
-}
-
-function appendAgenticAnswer(result) {
-  const wrapper = document.createElement('div')
-  wrapper.className = 'mb-4 flex justify-start'
-
-  const answerHtml = renderAgenticAnswerText(result.answer || 'No answer generated.')
-  const citationsHtml = (result.citations || []).length
-    ? `
-      <div class="mt-4 border-t border-enterprise-100 pt-3">
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-enterprise-400">Sources</p>
-        <ol class="space-y-1.5 text-xs text-enterprise-600">
-          ${result.citations
-            .map((c) => `
-              <li>
-                <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener" class="text-accent-600 hover:text-accent-700 hover:underline">
-                  [${c.number}] ${escapeHtml(c.title || c.url)}
-                </a>
-              </li>
-            `)
-            .join('')}
-        </ol>
-      </div>
-    `
-    : ''
-
-  wrapper.innerHTML = `
-    <div class="max-w-[90%] rounded-xl border border-enterprise-200 bg-white px-4 py-3 text-sm text-enterprise-800 shadow-soft">
-      <div class="mb-2 flex items-center gap-2 font-medium text-enterprise-700">
-        ${Lucide.icon('check', 14, 'text-green-600')}
-        <span>Answer</span>
-      </div>
-      <div class="prose prose-sm max-w-none text-enterprise-800">${answerHtml}</div>
-      ${citationsHtml}
-    </div>
-  `
-
-  elements.agenticChat.appendChild(wrapper)
-  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
-}
-
-function renderAgenticAnswerText(text) {
-  if (!text) return ''
-
-  // Escape HTML first, then apply safe Markdown-like formatting.
-  let html = escapeHtml(text)
-
-  // Bold / italic
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-  html = html.replace(/(^|[^*])\*([^*\n]+?)\*([^*]|$)/g, '$1<em>$2</em>$3')
-
-  // Convert lines starting with - or * into list items.
-  const lines = html.split('\n')
-  const out = []
-  let inList = false
-  for (const rawLine of lines) {
-    const listMatch = rawLine.match(/^\s*[-*]\s+(.+)$/)
-    if (listMatch) {
-      if (!inList) {
-        out.push('<ul class="list-disc space-y-1 pl-5">')
-        inList = true
-      }
-      out.push(`<li>${listMatch[1]}</li>`)
-    } else {
-      if (inList) {
-        out.push('</ul>')
-        inList = false
-      }
-      out.push(rawLine)
+    deepResearchActive = false
+    const btn = document.getElementById('modal-deep-research')
+    if (btn) {
+      btn.disabled = false
+      btn.innerHTML = `${Lucide.icon('search', 16)} <span>Deep research</span>`
     }
   }
-  if (inList) out.push('</ul>')
-  html = out.join('\n')
-
-  // Citation markers like [1]
-  html = html.replace(/\[([0-9]+)\]/g, '<sup class="font-medium text-accent-600">[$1]</sup>')
-
-  // Remaining newlines become line breaks.
-  html = html.replace(/\n/g, '<br>')
-
-  return html
 }
 
 // ---------------------------------------------------------------------------

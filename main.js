@@ -7,7 +7,7 @@ const { loadSettings, saveSettings, DEFAULT_SETTINGS } = require('./src/main/set
 const { testApiKey } = require('./src/main/llm')
 const { parseExcel, findCompanyNameColumn, exportExcel } = require('./src/main/excel')
 const { loadBulkJob, saveBulkJob, clearBulkJob } = require('./src/main/bulk-store')
-const { performAgenticSearch } = require('./src/main/agentic-search')
+const { deepResearchCompany } = require('./src/main/agentic-search')
 
 // Path to the local JSON store inside the app's user data directory.
 const STORE_FILE = path.join(app.getPath('userData'), 'companies.json')
@@ -142,15 +142,15 @@ app.whenReady().then(() => {
   ipcMain.handle('save-bulk-job', (_event, job) => saveBulkJob(job))
   ipcMain.handle('clear-bulk-job', () => clearBulkJob())
 
-  ipcMain.handle('agentic-search', async (event, query) => {
+  ipcMain.handle('deep-research-company', async (event, name) => {
     try {
       const settings = await loadSettings()
-      const result = await performAgenticSearch(query, settings.openrouterApiKey, (progress) => {
-        event.sender.send('agentic-search-progress', progress)
+      const result = await deepResearchCompany(name, settings.openrouterApiKey, (progress) => {
+        event.sender.send('enrich-progress', progress)
       })
-      return { success: true, result }
+      return { success: true, profile: result.profile }
     } catch (err) {
-      console.error('Agentic search failed:', err)
+      console.error('Deep research failed:', err)
       return { success: false, error: err.message }
     }
   })
