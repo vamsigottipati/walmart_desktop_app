@@ -127,6 +127,12 @@ function cacheElements() {
   elements.profileColumnsList = document.getElementById('profile-columns-list')
   elements.saveProfileBtn = document.getElementById('save-profile-btn')
   elements.profileMessage = document.getElementById('profile-message')
+
+  // Agentic Search
+  elements.agenticForm = document.getElementById('agentic-form')
+  elements.agenticInput = document.getElementById('agentic-input')
+  elements.agenticChat = document.getElementById('agentic-chat')
+  elements.agenticWelcome = document.getElementById('agentic-welcome')
 }
 
 function bindEvents() {
@@ -185,6 +191,16 @@ function bindEvents() {
 
   // Profile
   elements.saveProfileBtn.addEventListener('click', handleSaveProfile)
+
+  // Agentic Search
+  elements.agenticForm.addEventListener('submit', handleAgenticSearch)
+  elements.agenticInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      elements.agenticForm.requestSubmit()
+    }
+  })
+  elements.agenticInput.addEventListener('input', autoResizeAgenticInput)
 }
 
 function preventDefaults(event) {
@@ -195,6 +211,13 @@ function preventDefaults(event) {
 function registerProgressListener() {
   if (!window.electronAPI || !window.electronAPI.onEnrichProgress) return
   window.electronAPI.onEnrichProgress((progress) => updateLoadingProgress(progress))
+  window.electronAPI.onAgenticSearchProgress((progress) => updateAgenticProgress(progress))
+}
+
+function autoResizeAgenticInput() {
+  const el = elements.agenticInput
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 128)}px`
 }
 
 function navigateTo(page) {
@@ -1187,6 +1210,182 @@ async function handleExportUpload() {
   } catch (err) {
     alert('Export failed: ' + err.message)
   }
+}
+
+// ---------------------------------------------------------------------------
+// Agentic Search
+// ---------------------------------------------------------------------------
+
+let agenticSearchActive = false
+
+async function handleAgenticSearch(event) {
+  event.preventDefault()
+  const query = elements.agenticInput.value.trim()
+  if (!query || agenticSearchActive) return
+
+  agenticSearchActive = true
+  elements.agenticInput.value = ''
+  autoResizeAgenticInput()
+
+  if (elements.agenticWelcome) {
+    elements.agenticWelcome.remove()
+    elements.agenticWelcome = null
+  }
+
+  appendAgenticMessage('user', query)
+
+  const thinkingId = `agentic-thinking-${Date.now()}`
+  appendAgenticThinking(thinkingId)
+
+  try {
+    const response = await window.electronAPI.agenticSearch(query)
+    removeAgenticThinking(thinkingId)
+
+    if (!response.success) throw new Error(response.error || 'Search failed')
+
+    appendAgenticAnswer(response.result)
+  } catch (err) {
+    removeAgenticThinking(thinkingId)
+    appendAgenticMessage('system', `Error: ${err.message}`)
+  } finally {
+    agenticSearchActive = false
+    elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
+  }
+}
+
+function appendAgenticMessage(role, text) {
+  const wrapper = document.createElement('div')
+  wrapper.className = `mb-4 flex ${role === 'user' ? 'justify-end' : 'justify-start'}`
+
+  const bubble = document.createElement('div')
+  bubble.className = `max-w-[80%] rounded-xl px-4 py-3 text-sm ${
+    role === 'user'
+      ? 'bg-enterprise-900 text-white'
+      : 'border border-enterprise-200 bg-white text-enterprise-800 shadow-soft'
+  }`
+  bubble.innerHTML = role === 'user' ? escapeHtml(text) : renderAgenticAnswerText(text)
+
+  wrapper.appendChild(bubble)
+  elements.agenticChat.appendChild(wrapper)
+  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
+}
+
+function appendAgenticThinking(id) {
+  const wrapper = document.createElement('div')
+  wrapper.id = id
+  wrapper.className = 'mb-4 flex justify-start'
+  wrapper.innerHTML = `
+    <div class="max-w-[90%] rounded-xl border border-enterprise-200 bg-white px-4 py-3 text-sm text-enterprise-600 shadow-soft">
+      <div class="flex items-center gap-2 font-medium text-enterprise-700">
+        ${Lucide.icon('search', 14)}
+        <span>Researching...</span>
+      </div>
+      <div id="${id}-steps" class="mt-2 space-y-1 text-xs text-enterprise-500"></div>
+    </div>
+  `
+  elements.agenticChat.appendChild(wrapper)
+  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
+}
+
+function removeAgenticThinking(id) {
+  const el = document.getElementById(id)
+  if (el) el.remove()
+}
+
+function updateAgenticProgress(progress) {
+  const thinkingEls = elements.agenticChat.querySelectorAll('[id^="agentic-thinking-"]')
+  const latest = thinkingEls[thinkingEls.length - 1]
+  if (!latest) return
+
+  const steps = latest.querySelector('[id$="-steps"]')
+  if (!steps) return
+
+  const step = document.createElement('div')
+  step.className = 'flex items-center gap-1.5'
+  step.innerHTML = `${Lucide.icon('loader', 10, 'animate-spin')} ${escapeHtml(progress.message || '')}`
+  steps.appendChild(step)
+  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
+}
+
+function appendAgenticAnswer(result) {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'mb-4 flex justify-start'
+
+  const answerHtml = renderAgenticAnswerText(result.answer || 'No answer generated.')
+  const citationsHtml = (result.citations || []).length
+    ? `
+      <div class="mt-4 border-t border-enterprise-100 pt-3">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-enterprise-400">Sources</p>
+        <ol class="space-y-1.5 text-xs text-enterprise-600">
+          ${result.citations
+            .map((c) => `
+              <li>
+                <a href="${escapeHtml(c.url)}" target="_blank" rel="noopener" class="text-accent-600 hover:text-accent-700 hover:underline">
+                  [${c.number}] ${escapeHtml(c.title || c.url)}
+                </a>
+              </li>
+            `)
+            .join('')}
+        </ol>
+      </div>
+    `
+    : ''
+
+  wrapper.innerHTML = `
+    <div class="max-w-[90%] rounded-xl border border-enterprise-200 bg-white px-4 py-3 text-sm text-enterprise-800 shadow-soft">
+      <div class="mb-2 flex items-center gap-2 font-medium text-enterprise-700">
+        ${Lucide.icon('check', 14, 'text-green-600')}
+        <span>Answer</span>
+      </div>
+      <div class="prose prose-sm max-w-none text-enterprise-800">${answerHtml}</div>
+      ${citationsHtml}
+    </div>
+  `
+
+  elements.agenticChat.appendChild(wrapper)
+  elements.agenticChat.scrollTop = elements.agenticChat.scrollHeight
+}
+
+function renderAgenticAnswerText(text) {
+  if (!text) return ''
+
+  // Escape HTML first, then apply safe Markdown-like formatting.
+  let html = escapeHtml(text)
+
+  // Bold / italic
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/(^|[^*])\*([^*\n]+?)\*([^*]|$)/g, '$1<em>$2</em>$3')
+
+  // Convert lines starting with - or * into list items.
+  const lines = html.split('\n')
+  const out = []
+  let inList = false
+  for (const rawLine of lines) {
+    const listMatch = rawLine.match(/^\s*[-*]\s+(.+)$/)
+    if (listMatch) {
+      if (!inList) {
+        out.push('<ul class="list-disc space-y-1 pl-5">')
+        inList = true
+      }
+      out.push(`<li>${listMatch[1]}</li>`)
+    } else {
+      if (inList) {
+        out.push('</ul>')
+        inList = false
+      }
+      out.push(rawLine)
+    }
+  }
+  if (inList) out.push('</ul>')
+  html = out.join('\n')
+
+  // Citation markers like [1]
+  html = html.replace(/\[([0-9]+)\]/g, '<sup class="font-medium text-accent-600">[$1]</sup>')
+
+  // Remaining newlines become line breaks.
+  html = html.replace(/\n/g, '<br>')
+
+  return html
 }
 
 // ---------------------------------------------------------------------------

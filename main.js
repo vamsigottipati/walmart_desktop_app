@@ -7,6 +7,7 @@ const { loadSettings, saveSettings, DEFAULT_SETTINGS } = require('./src/main/set
 const { testApiKey } = require('./src/main/llm')
 const { parseExcel, findCompanyNameColumn, exportExcel } = require('./src/main/excel')
 const { loadBulkJob, saveBulkJob, clearBulkJob } = require('./src/main/bulk-store')
+const { performAgenticSearch } = require('./src/main/agentic-search')
 
 // Path to the local JSON store inside the app's user data directory.
 const STORE_FILE = path.join(app.getPath('userData'), 'companies.json')
@@ -140,6 +141,19 @@ app.whenReady().then(() => {
   ipcMain.handle('load-bulk-job', () => loadBulkJob())
   ipcMain.handle('save-bulk-job', (_event, job) => saveBulkJob(job))
   ipcMain.handle('clear-bulk-job', () => clearBulkJob())
+
+  ipcMain.handle('agentic-search', async (event, query) => {
+    try {
+      const settings = await loadSettings()
+      const result = await performAgenticSearch(query, settings.openrouterApiKey, (progress) => {
+        event.sender.send('agentic-search-progress', progress)
+      })
+      return { success: true, result }
+    } catch (err) {
+      console.error('Agentic search failed:', err)
+      return { success: false, error: err.message }
+    }
+  })
 
   createWindow()
 

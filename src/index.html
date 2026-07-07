@@ -50,6 +50,12 @@
               </button>
             </li>
             <li>
+              <button data-page="agentic" class="nav-item w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-enterprise-700 transition hover:bg-enterprise-50">
+                <i data-icon="search" data-icon-size="18"></i>
+                <span>Agentic Search</span>
+              </button>
+            </li>
+            <li>
               <button data-page="upload" class="nav-item w-full flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-enterprise-700 transition hover:bg-enterprise-50">
                 <i data-icon="upload-cloud" data-icon-size="18"></i>
                 <span>Upload Data</span>
@@ -80,6 +86,48 @@
 
       <!-- Page container -->
       <section id="page-container" class="flex-1 overflow-hidden bg-enterprise-50">
+
+        <!-- Agentic Search page -->
+        <div id="agentic-page" class="page hidden h-full flex-col overflow-hidden">
+          <div class="flex h-full flex-col">
+            <div class="border-b border-enterprise-200 bg-white px-6 py-4">
+              <div class="mb-1 flex items-center gap-3">
+                <i data-icon="search" data-icon-size="24" class="text-enterprise-600"></i>
+                <h2 class="text-xl font-semibold text-enterprise-900">Agentic Search</h2>
+              </div>
+              <p class="text-sm text-enterprise-500">Ask anything. The agent searches the web, follows sources, and synthesizes a cited answer.</p>
+            </div>
+
+            <div id="agentic-chat" class="flex-1 overflow-y-auto px-6 py-4">
+              <div id="agentic-welcome" class="flex h-full flex-col items-center justify-center text-center text-enterprise-500">
+                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-lg border border-enterprise-200 bg-white shadow-soft">
+                  <i data-icon="search" data-icon-size="32" class="text-enterprise-300"></i>
+                </div>
+                <p class="text-base font-medium">Ask a research question</p>
+                <p class="mt-1 max-w-md text-sm">Try: "What is Podean's revenue and headcount?" or "Who are Apple's current executives?"</p>
+              </div>
+            </div>
+
+            <div class="border-t border-enterprise-200 bg-white p-4">
+              <form id="agentic-form" class="mx-auto flex max-w-3xl items-end gap-3">
+                <div class="relative flex-1">
+                  <textarea
+                    id="agentic-input"
+                    rows="1"
+                    placeholder="Ask a question..."
+                    required
+                    class="glass-input max-h-32 w-full resize-none py-3 pr-10"
+                  ></textarea>
+                </div>
+                <button type="submit" class="glass-btn flex items-center gap-2 whitespace-nowrap">
+                  <i data-icon="search" data-icon-size="16"></i>
+                  <span>Search</span>
+                </button>
+              </form>
+              <p class="mt-2 text-center text-xs text-enterprise-400">Searches use DuckDuckGo + DeepSeek V4 Flash synthesis.</p>
+            </div>
+          </div>
+        </div>
 
         <!-- Dashboard page -->
         <div id="dashboard-page" class="page flex h-full flex-col">

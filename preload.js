@@ -15,7 +15,8 @@ const INVOKABLE_CHANNELS = [
   'save-profile',
   'load-bulk-job',
   'save-bulk-job',
-  'clear-bulk-job'
+  'clear-bulk-job',
+  'agentic-search'
 ]
 
 // Expose a small, safe API surface to the renderer process.
@@ -127,6 +128,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveProfile: (payload) => ipcRenderer.invoke('save-profile', payload),
 
   /**
+   * Run an agentic web search for a natural-language question.
+   * @param {string} query
+   * @returns {Promise<{success: boolean, result?: object, error?: string}>}
+   */
+  agenticSearch: (query) => ipcRenderer.invoke('agentic-search', query),
+
+  /**
    * Subscribe to enrichment progress events from the main process.
    * @param {(progress: {source: string, status: string, message: string}) => void} callback
    */
@@ -136,5 +144,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * Remove an enrichment progress listener.
    * @param {(progress: {source: string, status: string, message: string}) => void} callback
    */
-  removeEnrichProgressListener: (callback) => ipcRenderer.removeListener('enrich-progress', callback)
+  removeEnrichProgressListener: (callback) => ipcRenderer.removeListener('enrich-progress', callback),
+
+  /**
+   * Subscribe to agentic search progress events from the main process.
+   * @param {(progress: {type: string, iteration?: number, query?: string, url?: string, message: string}) => void} callback
+   */
+  onAgenticSearchProgress: (callback) => ipcRenderer.on('agentic-search-progress', (_event, value) => callback(value)),
+
+  /**
+   * Remove an agentic search progress listener.
+   * @param {(progress: {type: string, iteration?: number, query?: string, url?: string, message: string}) => void} callback
+   */
+  removeAgenticSearchProgressListener: (callback) => ipcRenderer.removeListener('agentic-search-progress', callback)
 })
