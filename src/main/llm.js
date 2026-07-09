@@ -169,6 +169,19 @@ function normalizeProfile(name, raw) {
   }
 }
 
+/**
+ * Generic chat completion wrapper.
+ * Currently routes to the configured OpenRouter endpoint; refactor here to
+ * support additional providers without changing callers.
+ * @param {string} apiKey
+ * @param {Array<{role: string, content: string}>} messages
+ * @param {number} maxTokens
+ * @returns {Promise<object>} provider response
+ */
+async function chatCompletion(apiKey, messages, maxTokens = 1200) {
+  return callOpenRouter(apiKey, messages, maxTokens)
+}
+
 async function callOpenRouter(apiKey, messages, maxTokens = 1200) {
   const response = await fetchWithTimeout(OPENROUTER_URL, {
     method: 'POST',
@@ -248,6 +261,8 @@ async function synthesizeCompanyProfile(name, agentResults, apiKey) {
 
 module.exports = {
   MODEL,
+  chatCompletion,
+  extractJson,
   testApiKey,
   synthesizeCompanyProfile
 }

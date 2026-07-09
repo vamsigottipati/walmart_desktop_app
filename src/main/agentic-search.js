@@ -11,7 +11,7 @@
  */
 
 const cheerio = require('cheerio')
-const { callOpenRouter, extractJson } = require('./llm')
+const { chatCompletion, extractJson } = require('./llm')
 
 const MAX_ITERATIONS = 10
 const RESULTS_PER_SEARCH = 5
@@ -199,7 +199,7 @@ Rules:
 - Do not include any text outside the JSON object.`
 
   try {
-    const data = await callOpenRouter(apiKey, [{ role: 'user', content: prompt }], 500)
+    const data = await chatCompletion(apiKey, [{ role: 'user', content: prompt }], 500)
     const parsed = extractJson(data.choices?.[0]?.message?.content || '')
     if (parsed && Array.isArray(parsed.subQuestions) && Array.isArray(parsed.initialQueries)) {
       return {
@@ -264,7 +264,7 @@ Rules:
 - Do not include any text outside the JSON object.`
 
   try {
-    const data = await callOpenRouter(apiKey, [{ role: 'user', content: prompt }], 700)
+    const data = await chatCompletion(apiKey, [{ role: 'user', content: prompt }], 700)
     const parsed = extractJson(data.choices?.[0]?.message?.content || '')
     if (parsed && typeof parsed.sufficient === 'boolean') {
       return {
@@ -324,7 +324,7 @@ Return ONLY a valid JSON object with this exact shape:
 Do not include any text outside the JSON object.`
 
   try {
-    const data = await callOpenRouter(apiKey, [{ role: 'user', content: prompt }], 1500)
+    const data = await chatCompletion(apiKey, [{ role: 'user', content: prompt }], 1500)
     const parsed = extractJson(data.choices?.[0]?.message?.content || '')
     if (parsed && typeof parsed.answer === 'string') {
       return {
@@ -522,7 +522,7 @@ ${context}`
 
   if (apiKey) {
     try {
-      const data = await callOpenRouter(apiKey, [{ role: 'user', content: extractionPrompt }], 1500)
+      const data = await chatCompletion(apiKey, [{ role: 'user', content: extractionPrompt }], 1500)
       const parsed = extractJson(data.choices?.[0]?.message?.content || '')
       if (parsed && typeof parsed === 'object') {
         profile = {

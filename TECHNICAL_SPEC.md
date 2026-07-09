@@ -667,9 +667,9 @@ The agentic search module currently uses DuckDuckGo HTML search. To swap:
 
 ---
 
-## 15. Recommended Rewrite Roadmap
+## 15. Recommended Roadmap
 
-If rebuilding from this spec, consider the following order:
+If building from this spec, consider the following order:
 
 1. **Scaffold** Electron + Tailwind + secure preload bridge.
 2. **Implement settings store** with provider-agnostic LLM config.
@@ -691,8 +691,9 @@ All LLM prompts should:
 - Include source context truncated to fit within model context limits.
 - Instruct the model not to hallucinate facts not present in sources.
 - Include a fallback parser that extracts JSON even if the model wraps it in Markdown fences or adds explanatory text.
+- Add strict gaurdrails to make sure the extracted data is currect and true to the context. 
 
-For a production rewrite, centralize prompt templates in a dedicated module and version them alongside the code.
+For a production developmen, centralize prompt templates in a dedicated module and version them alongside the code.
 
 ---
 
