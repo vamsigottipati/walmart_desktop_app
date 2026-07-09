@@ -521,9 +521,11 @@ ${context}`
   }
 
   if (apiKey) {
+    let extractionData = null
     try {
-      const data = await chatCompletion(apiKey, [{ role: 'user', content: extractionPrompt }], 1500)
-      const parsed = extractJson(data.choices?.[0]?.message?.content || '')
+      extractionData = await chatCompletion(apiKey, [{ role: 'user', content: extractionPrompt }], 1500)
+      const rawContent = extractionData.choices?.[0]?.message?.content || ''
+      const parsed = extractJson(rawContent)
       if (parsed && typeof parsed === 'object') {
         profile = {
           headquarters: parsed.headquarters || null,
@@ -545,6 +547,10 @@ ${context}`
       }
     } catch (err) {
       console.warn('Deep research extraction error:', err.message)
+      // If the error happened after receiving a response, log it for debugging.
+      if (extractionData?.choices?.[0]?.message?.content) {
+        console.warn('Deep research raw extraction response:', extractionData.choices[0].message.content)
+      }
     }
   }
 

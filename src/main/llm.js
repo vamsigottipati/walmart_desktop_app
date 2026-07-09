@@ -12,10 +12,9 @@ const DEFAULT_TIMEOUT = 30_000
 function systemPrompt() {
   return (
     'You are a meticulous company data enrichment assistant. ' +
-    'Given a company name and multi-source web context, produce a single valid JSON object with no markdown, no commentary, and no code fences. ' +
-    'Use ALL provided context and your general knowledge to fill as many fields as possible with accurate, up-to-date values. ' +
-    'If exact data is missing, infer the most likely value from context and explicitly mark inferred values when possible. ' +
-    'Respond with exactly this JSON shape:\n' +
+    'Given a company name and multi-source web context, produce a single valid JSON object. ' +
+    'Your entire response must be valid JSON and nothing else: no markdown, no code fences, no explanation, no apology.\n\n' +
+    'Required JSON shape:\n' +
     '{\n' +
     '  "name": "company name",\n' +
     '  "description": "a concise 1-2 sentence description",\n' +
@@ -36,7 +35,7 @@ function systemPrompt() {
     '- revenue should be an object with amount, year, and source when you can determine them; otherwise a string or null/Unknown.\n' +
     '- funding should be an object with totalRaised and rounds for venture-backed companies; for public companies with no VC funding, return null or "Public company".\n' +
     '- stakeholderEmails: include discovered emails and, when reasonable, infer likely emails for named stakeholders using the company domain.\n' +
-    '- Do not include any text outside the JSON object.'
+    '- Do not include any text outside the JSON object. Start your response with { and end with }.'
   )
 }
 
@@ -179,10 +178,21 @@ function normalizeProfile(name, raw) {
  * @returns {Promise<object>} provider response
  */
 async function chatCompletion(apiKey, messages, maxTokens = 1200) {
-  return callOpenRouter(apiKey, messages, maxTokens)
+  return callOpenRouterWithRetry(apiKey, messages, maxTokens)
 }
 
 async function callOpenRouter(apiKey, messages, maxTokens = 1200) {
+  const body = {
+    model: MODEL,
+    messages,
+    temperature: 0.05,
+    max_tokens: maxTokens
+  }
+
+  // Many OpenRouter / OpenAI-compatible models support JSON mode.
+  // If unsupported by the model, the provider ignores the field.
+  body.response_format = { type: 'json_object' }
+
   const response = await fetchWithTimeout(OPENROUTER_URL, {
     method: 'POST',
     headers: {
@@ -191,20 +201,32 @@ async function callOpenRouter(apiKey, messages, maxTokens = 1200) {
       'HTTP-Referer': 'https://github.com/walmart-company-enrichment',
       'X-Title': 'Walmart Company Enrichment'
     },
-    body: JSON.stringify({
-      model: MODEL,
-      messages,
-      temperature: 0.1,
-      max_tokens: maxTokens
-    })
+    body: JSON.stringify(body)
   })
 
   if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    throw new Error(`OpenRouter returned ${response.status}: ${body}`)
+    const responseBody = await response.text().catch(() => '')
+    throw new Error(`OpenRouter returned ${response.status}: ${responseBody}`)
   }
 
   return response.json()
+}
+
+async function callOpenRouterWithRetry(apiKey, messages, maxTokens = 1200, retries = 2) {
+  let lastError
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await callOpenRouter(apiKey, messages, maxTokens)
+    } catch (err) {
+      lastError = err
+      if (attempt < retries) {
+        const delay = 1000 * Math.pow(2, attempt)
+        console.warn(`LLM call failed (attempt ${attempt + 1}), retrying in ${delay}ms:`, err.message)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+  throw lastError
 }
 
 /**
@@ -245,7 +267,7 @@ async function synthesizeCompanyProfile(name, agentResults, apiKey) {
     throw new Error('OpenRouter API key is not configured')
   }
 
-  const data = await callOpenRouter(apiKey, [
+  const data = await callOpenRouterWithRetry(apiKey, [
     { role: 'system', content: systemPrompt() },
     { role: 'user', content: buildUserPrompt(name, agentResults) }
   ])
@@ -253,6 +275,7 @@ async function synthesizeCompanyProfile(name, agentResults, apiKey) {
   const content = data.choices?.[0]?.message?.content
   const parsed = extractJson(content)
   if (!parsed) {
+    console.warn('LLM synthesis parse failure. Raw response:', content)
     throw new Error('LLM response did not contain valid JSON')
   }
 

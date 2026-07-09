@@ -19,6 +19,43 @@ const { synthesizeCompanyProfile } = require('./llm')
 const SEC_USER_AGENT = 'WalmartCompanyEnrichment contact@example.com'
 const DEFAULT_TIMEOUT = 12_000
 const MAX_SNIPPET_WORDS = 160
+
+async function fetchSec(url, options = {}, timeout = DEFAULT_TIMEOUT, retries = 2) {
+  let lastError
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetchWithTimeout(url, {
+        ...options,
+        headers: {
+          'User-Agent': SEC_USER_AGENT,
+          ...(options.headers || {})
+        }
+      }, timeout)
+      if (response.ok) return response
+      // Rate limited: back off and retry
+      if (response.status === 429 || response.status >= 500) {
+        const body = await response.text().catch(() => '')
+        lastError = new Error(`SEC ${response.status} for ${url}: ${body.slice(0, 200)}`)
+        if (attempt < retries) {
+          const delay = 1000 * Math.pow(2, attempt)
+          console.warn(`SEC request failed (${response.status}), retrying in ${delay}ms: ${url}`)
+          await new Promise((resolve) => setTimeout(resolve, delay))
+          continue
+        }
+      }
+      const body = await response.text().catch(() => '')
+      throw new Error(`SEC ${response.status} for ${url}: ${body.slice(0, 200)}`)
+    } catch (err) {
+      lastError = err
+      if (attempt < retries) {
+        const delay = 1000 * Math.pow(2, attempt)
+        console.warn(`SEC fetch error, retrying in ${delay}ms: ${url} — ${err.message}`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
+      }
+    }
+  }
+  throw lastError
+}
 const LONG_SNIPPET_WORDS = 400
 
 // ---------------------------------------------------------------------------
@@ -796,9 +833,7 @@ class EdgarAgent {
 
       for (const suffix of suffixes) {
         const searchUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&company=${encodeURIComponent(name + suffix)}&owner=exclude&count=40`
-        const response = await fetchWithTimeout(searchUrl, {
-          headers: { 'User-Agent': SEC_USER_AGENT }
-        })
+        const response = await fetchSec(searchUrl, {}, 15_000)
         const html = await response.text()
         const $ = cheerio.load(html)
 
@@ -851,9 +886,7 @@ class EdgarAgent {
           // Use SEC JSON APIs for structured financial data
           const cikPadded = String(parseInt(cik, 10)).padStart(10, '0')
           const companyFactsUrl = `https://data.sec.gov/api/xbrl/companyfacts/CIK${cikPadded}.json`
-          const factsResponse = await fetchWithTimeout(companyFactsUrl, {
-            headers: { 'User-Agent': SEC_USER_AGENT }
-          }, 20_000)
+          const factsResponse = await fetchSec(companyFactsUrl, {}, 20_000)
           if (factsResponse.ok) {
             const facts = await factsResponse.json()
             const usGaap = facts.facts?.['us-gaap'] || {}
@@ -910,9 +943,7 @@ class EdgarAgent {
 
         try {
           const browseUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=10-K&dateb=&owner=exclude&count=1`
-          const browseResponse = await fetchWithTimeout(browseUrl, {
-            headers: { 'User-Agent': SEC_USER_AGENT }
-          })
+          const browseResponse = await fetchSec(browseUrl, {}, 15_000)
           const browseHtml = await browseResponse.text()
           const $browse = cheerio.load(browseHtml)
           const filingLink = $browse('table.tableFile2 a[href*="/Archives/edgar/data/"]').first()
@@ -922,10 +953,10 @@ class EdgarAgent {
             latest10k = { date: cells.eq(3).text().trim(), url: 'https://www.sec.gov' + filingLink.attr('href') }
           }
 
+          await new Promise((resolve) => setTimeout(resolve, 500))
+
           const qBrowseUrl = `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=10-Q&dateb=&owner=exclude&count=1`
-          const qBrowseResponse = await fetchWithTimeout(qBrowseUrl, {
-            headers: { 'User-Agent': SEC_USER_AGENT }
-          })
+          const qBrowseResponse = await fetchSec(qBrowseUrl, {}, 15_000)
           const qHtml = await qBrowseResponse.text()
           const $q = cheerio.load(qHtml)
           const qLink = $q('table.tableFile2 a[href*="/Archives/edgar/data/"]').first()
@@ -947,7 +978,7 @@ class EdgarAgent {
       return { source: this.source, found: !!cik, data: { cik, entityName, latest10k, latest10q, revenue, netIncome, fiscalYear } }
     } catch (err) {
       console.warn('EdgarAgent error:', err.message)
-      onProgress({ source: this.source, status: 'done', message: 'SEC check failed' })
+      onProgress({ source: this.source, status: 'done', message: `SEC check failed: ${err.message}` })
       return { source: this.source, found: false, data: {} }
     }
   }
